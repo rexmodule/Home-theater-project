@@ -1,0 +1,25 @@
+#######################################
+# Syntax Coloring Map For PT2258
+#######################################
+# Class
+#######################################
+
+PT2258	KEYWORD1
+
+#######################################
+# Methods and Functions
+#######################################	
+
+init			     KEYWORD2
+setMute			KEYWORD2
+setChannelVolume	KEYWORD2
+setMasterVolume	KEYWORD2
+pt2258             KEYWORD2
+
+#######################################
+# Constants
+#######################################
+
+MUTE
+UNMUTE
+
