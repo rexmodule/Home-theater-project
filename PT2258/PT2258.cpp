@@ -74,7 +74,7 @@ int PT2258::init(void)
      Wire.endTransmission();       // stop transmitting
     }
 
-    if (chno >=6 & chno <=11 )
+    if (chno >=6 && chno <=11 )
     {
      Wire.beginTransmission(ADDR_11); // transmit to device 0x46, PT2258
      Wire.write(channell_address01[chno] | (HEX2BCD(channelVolume)   &  0x0f));   
@@ -82,7 +82,7 @@ int PT2258::init(void)
      Wire.endTransmission();       // stop transmitting
     }
       
-    if (chno >=12 & chno <=17 )
+    if (chno >=12 && chno <=17 )
     {
      Wire.beginTransmission(ADDR_10); // transmit to device 0x46, PT2258
      Wire.write(channell_address01[chno] | (HEX2BCD(channelVolume)   &  0x0f));   
@@ -90,7 +90,7 @@ int PT2258::init(void)
      Wire.endTransmission();       // stop transmitting
     }
       
-    if (chno >=18 & chno <=23 )
+    if (chno >=18 && chno <=23 )
     {
      Wire.beginTransmission(ADDR_01); // transmit to device 0x46, PT2258
      Wire.write(channell_address01[chno] | (HEX2BCD(channelVolume)   &  0x0f));   
@@ -142,7 +142,7 @@ void PT2258::setChannelVolume(unsigned char chvol, char chno)
   Wire.endTransmission();       // stop transmitting
   }
 
-  if (chno >=6 & chno <=11 )
+  if (chno >=6 && chno <=11 )
   {  
   Wire.beginTransmission(ADDR_11); // transmit to device 0x46, PT2258
   Wire.write(channell_address01[chno] | (HEX2BCD(chvol)   &  0x0f));   
@@ -150,7 +150,7 @@ void PT2258::setChannelVolume(unsigned char chvol, char chno)
   Wire.endTransmission();       // stop transmitting
   }
   
-  if (chno >= 12 & chno <=17 )
+  if (chno >= 12 && chno <=17 )
   {
   Wire.beginTransmission(ADDR_10); // transmit to device 0x40, PT2258
   Wire.write(channell_address01[chno] | (HEX2BCD(chvol)   &  0x0f));   
@@ -158,7 +158,7 @@ void PT2258::setChannelVolume(unsigned char chvol, char chno)
   Wire.endTransmission();       // stop transmitting
   }
 
-  if (chno >=18 & chno <=23 )
+  if (chno >=18 && chno <=23 )
   {  
   Wire.beginTransmission(ADDR_01); // transmit to device 0x46, PT2258
   Wire.write(channell_address01[chno] | (HEX2BCD(chvol)   &  0x0f));   
