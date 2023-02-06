@@ -145,6 +145,7 @@ void setup() {
 
   pinMode(sw_mute, INPUT_PULLUP);   // Mute
   pinMode(sw_pwr, INPUT_PULLUP);    // Power
+  pinMode(enc_sw, INPUT_PULLUP);      
   pinMode(sw_amp_power, OUTPUT);
   pinMode(sw_bt_power, OUTPUT);
   pinMode(t_mute, OUTPUT);
