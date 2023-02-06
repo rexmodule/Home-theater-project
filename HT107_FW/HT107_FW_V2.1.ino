@@ -143,7 +143,6 @@ void setup() {
   lcd.backlight();
   lcd.clear();
 
-  ste
   pinMode(sw_mute, INPUT_PULLUP);   // Mute
   pinMode(sw_pwr, INPUT_PULLUP);    // Power
   pinMode(sw_amp_power, OUTPUT);
