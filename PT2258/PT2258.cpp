@@ -13,17 +13,33 @@
 #define  ADDR_10                  0x44
 #define  ADDR_01                  0x42
 
-unsigned char channell_address01[8] = 
+unsigned char channell_address01[24] = 
   {CHANNEL1_VOLUME_STEP_01, CHANNEL2_VOLUME_STEP_01, 
    CHANNEL3_VOLUME_STEP_01, CHANNEL4_VOLUME_STEP_01,
    CHANNEL5_VOLUME_STEP_01, CHANNEL6_VOLUME_STEP_01, 
-   CHANNEL7_VOLUME_STEP_01, CHANNEL8_VOLUME_STEP_01};
+   CHANNEL7_VOLUME_STEP_01, CHANNEL8_VOLUME_STEP_01,
+   CHANNEL9_VOLUME_STEP_01, CHANNEL10_VOLUME_STEP_01, 
+   CHANNEL11_VOLUME_STEP_01, CHANNEL12_VOLUME_STEP_01,
+   CHANNEL13_VOLUME_STEP_01, CHANNEL14_VOLUME_STEP_01, 
+   CHANNEL15_VOLUME_STEP_01, CHANNEL16_VOLUME_STEP_01,
+   CHANNEL17_VOLUME_STEP_01, CHANNEL18_VOLUME_STEP_01, 
+   CHANNEL19_VOLUME_STEP_01, CHANNEL20_VOLUME_STEP_01,
+   CHANNEL21_VOLUME_STEP_01, CHANNEL22_VOLUME_STEP_01, 
+   CHANNEL23_VOLUME_STEP_01, CHANNEL24_VOLUME_STEP_01};
 
-unsigned char channell_address10[8] = 
+unsigned char channell_address10[24] = 
   {CHANNEL1_VOLUME_STEP_10, CHANNEL2_VOLUME_STEP_10,
    CHANNEL3_VOLUME_STEP_10, CHANNEL4_VOLUME_STEP_10,
    CHANNEL5_VOLUME_STEP_10, CHANNEL6_VOLUME_STEP_10,
-   CHANNEL7_VOLUME_STEP_10, CHANNEL8_VOLUME_STEP_10};
+   CHANNEL7_VOLUME_STEP_10, CHANNEL8_VOLUME_STEP_10,
+   CHANNEL9_VOLUME_STEP_10, CHANNEL10_VOLUME_STEP_10,
+   CHANNEL11_VOLUME_STEP_10, CHANNEL12_VOLUME_STEP_10,
+   CHANNEL13_VOLUME_STEP_10, CHANNEL14_VOLUME_STEP_10,
+   CHANNEL15_VOLUME_STEP_10, CHANNEL16_VOLUME_STEP_10,
+   CHANNEL17_VOLUME_STEP_10, CHANNEL18_VOLUME_STEP_10,
+   CHANNEL19_VOLUME_STEP_10, CHANNEL20_VOLUME_STEP_10,
+   CHANNEL21_VOLUME_STEP_10, CHANNEL22_VOLUME_STEP_10,
+   CHANNEL23_VOLUME_STEP_10, CHANNEL24_VOLUME_STEP_10};
 
 unsigned char addr[4] = {ADDR_00, ADDR_11, ADDR_10, ADDR_01};
 
@@ -134,7 +150,7 @@ void PT2258::setMute(char in_mute)
 void PT2258::setChannelVolume(unsigned char chvol, char chno)
 {   
 
- if (chno <=5 )
+ if (chno <6 )
   {
   Wire.beginTransmission(ADDR_00); // transmit to device 0x40, PT2258
   Wire.write(channell_address01[chno] | (HEX2BCD(chvol)   &  0x0f));   
@@ -142,7 +158,7 @@ void PT2258::setChannelVolume(unsigned char chvol, char chno)
   Wire.endTransmission();       // stop transmitting
   }
 
-  if (chno >=6 && chno <=11 )
+  if (chno >=6 && chno <12 )
   {  
   Wire.beginTransmission(ADDR_11); // transmit to device 0x46, PT2258
   Wire.write(channell_address01[chno] | (HEX2BCD(chvol)   &  0x0f));   
@@ -150,7 +166,7 @@ void PT2258::setChannelVolume(unsigned char chvol, char chno)
   Wire.endTransmission();       // stop transmitting
   }
   
-  if (chno >= 12 && chno <=17 )
+  if (chno >= 12 && chno <18 )
   {
   Wire.beginTransmission(ADDR_10); // transmit to device 0x40, PT2258
   Wire.write(channell_address01[chno] | (HEX2BCD(chvol)   &  0x0f));   
@@ -158,7 +174,7 @@ void PT2258::setChannelVolume(unsigned char chvol, char chno)
   Wire.endTransmission();       // stop transmitting
   }
 
-  if (chno >=18 && chno <=23 )
+  if (chno >=18 && chno <24 )
   {  
   Wire.beginTransmission(ADDR_01); // transmit to device 0x46, PT2258
   Wire.write(channell_address01[chno] | (HEX2BCD(chvol)   &  0x0f));   
