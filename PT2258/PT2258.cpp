@@ -11,7 +11,7 @@
 #define  ADDR_00                  0x40 
 #define  ADDR_11                  0x46
 #define  ADDR_10                  0x44
-#define  ADDE_01                  0x42
+#define  ADDR_01                  0x42
 
 unsigned char channell_address01[8] = 
   {CHANNEL1_VOLUME_STEP_01, CHANNEL2_VOLUME_STEP_01, 
