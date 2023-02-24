@@ -18,11 +18,9 @@ RotaryEncoder *encoder = nullptr;
 #define lcd_addr 0x27
 #define btn_delay 150
 #define ir_delay 1
-#define vol_delay 1
-#define lcd_timeout 120000
-
-
-       
+#define vol_delay 100
+#define lcd_timeout 30000
+      
 // resistance at 25 degrees C
 #define THERMISTORNOMINAL 10000      
 // temp. for nominal resistance (almost always 25 C)
@@ -56,8 +54,8 @@ int samples2[NUMSAMPLES];
 #define t_subp A3         //npn 12v
 #define t_sub_ph 10      //npn 12v
 #define ir_sens 11       // IR
-#define sw_bt_power 12   //pnp 5v
-#define sw_amp_power 13  //npn 24v
+#define t_bt_power 12   //pnp 5v
+#define t_amp_power 13  //npn 24v
 
 
 // IR HEX code
@@ -136,20 +134,21 @@ void checkPosition() {
 }
 
 void setup() {
-
-  //Serial.begin(9600);
-  pt2258.init();
-  IrReceiver.begin(11, DISABLE_LED_FEEDBACK);
+   
+  Wire.setClock(100000);
+//  Serial.begin(9600);
+  //pt2258.init();
+  IrReceiver.begin(ir_sens, DISABLE_LED_FEEDBACK);
   lcd.init(); 
   lcd.clear();
   
   pinMode(sw_mute, INPUT_PULLUP);   // Mute
   pinMode(sw_pwr, INPUT_PULLUP);    // Power
   pinMode(enc_sw, INPUT_PULLUP);
-  pinMode(enc_dt, INPUT_PULLUP);  
-  pinMode(enc_clk, INPUT_PULLUP); 
-  pinMode(sw_amp_power, OUTPUT);
-  pinMode(sw_bt_power, OUTPUT);
+  pinMode(enc_dt, INPUT);  
+  pinMode(enc_clk, INPUT); 
+  pinMode(t_amp_power, OUTPUT);
+  pinMode(t_bt_power, OUTPUT);
   pinMode(t_mute, OUTPUT);
   pinMode(t_aux, OUTPUT);
   pinMode(stb_led, OUTPUT);
@@ -169,8 +168,8 @@ void setup() {
   TCCR1B |= (1 << WGM13) | (1 << CS10);
   ICR1 = TCNT1_TOP;
 
-  digitalWrite(sw_amp_power, LOW);
-  digitalWrite(sw_bt_power, HIGH);
+  digitalWrite(t_amp_power, LOW);
+  digitalWrite(t_bt_power, HIGH);
 
   encoder = new RotaryEncoder(enc_clk, enc_dt, RotaryEncoder::LatchMode::TWO03);
 
@@ -198,6 +197,13 @@ void loop() {
   ir_control();
   return_delay();
   static int pos = 0;
+/*  Serial.print("mas:  ");
+  Serial.print(mas_vol);
+  Serial.print("      sub:  ");
+  Serial.print(sub);
+  Serial.print("      enc:  ");
+  Serial.println(encoder->getPosition());  
+*/
   encoder->tick();
   newPos = encoder->getPosition();
 
@@ -344,7 +350,7 @@ void loop() {
     }
     if (menu_active == 100 && backlight == 1){
       dim = millis() - currentTime;
-      if(dim >= 5000){
+      if(dim >= 10000){
       lcd.noBacklight();
       backlight= 0;
       }
@@ -609,7 +615,7 @@ void eeprom_update() {
   EEPROM.update(11, speaker_mode);
 }
 
-void eeprom_read() {
+void eeprom_read() { 
   in = EEPROM.read(0);
   mas_vol = EEPROM.read(1);
   fl_vol = EEPROM.read(2) - 10;
@@ -769,6 +775,8 @@ void setPwmDuty (byte duty) {
 
 void power_up() {
   if (power == 1) {
+    digitalWrite(stb_led, LOW);
+    digitalWrite(t_amp_power, HIGH);
     setPwmDuty(fan_max);
     lcd.clear();
     delay(500);
@@ -803,7 +811,7 @@ void power_up() {
     set_mute();
     vol_menu = 0;
     menu_active = 0;
-    delay(300);
+    delay(500);
     bt_power_sw();
     ir_on = 1;
     vol_on = 0;
@@ -811,13 +819,11 @@ void power_up() {
     currentSleepTime = millis();
     currentTime = millis();
     vol_menu_jup = 0;
-    digitalWrite(stb_led, LOW);
-    digitalWrite(sw_amp_power, HIGH);
 
   }
   else if (TX > temp_lim) {
     digitalWrite(stb_led, HIGH);
-    digitalWrite(sw_amp_power, LOW);
+    digitalWrite(t_amp_power, LOW);
     mute = 1;
     set_mute();
     delay(100);
@@ -828,7 +834,7 @@ void power_up() {
   }  
   else {
     digitalWrite(stb_led, HIGH);
-    digitalWrite(sw_amp_power, LOW);
+    digitalWrite(t_amp_power, LOW);
     mute = 1;
     set_mute();
     delay(100);
@@ -844,31 +850,36 @@ void power_up() {
 void bt_power_sw() {
   if (power == 1) {
     if (in == 0) {
-      digitalWrite(sw_bt_power, LOW);
+      digitalWrite(t_bt_power, LOW);
     } else {
-      digitalWrite(sw_bt_power, HIGH);
+      digitalWrite(t_bt_power, HIGH);
     }
   } else {
-    digitalWrite(sw_bt_power, HIGH);
+    digitalWrite(t_bt_power, HIGH);
   }
 }
 
 void start_up() {
   mute = 1;
+  digitalWrite(stb_led, HIGH);
   set_mute();
+  set_in();
+  set_sub_ph();  
   setPwmDuty(fan_max);
-  delay(500);
+  delay(100);
   lcd.backlight();
   lcd.setCursor(0, 0);
   lcd.print(F("     HT701 rev2    "));
-  delay(500);
+  delay(300);
   lcd.setCursor(0, 2);
   lcd.print(F("   HiFi Amplifier  "));
-  delay(1500);
+  delay(1300);
   lcd.clear();
+//  set_in();
   delay(300);
   setPwmDuty(0);
-  set_in();
+//  set_sub_ph();  
+  pt2258.init();
   set_fl();
   set_fr();
   set_sl();
@@ -877,7 +888,6 @@ void start_up() {
   set_rr();
   set_cn();
   set_sub();
-  set_sub_ph();
    
 }
 
@@ -1052,9 +1062,6 @@ void ir_control() {
         case ir_sp_mode:
           speaker_mode++;
           vol_menu = 0;
-          if (speaker_mode == 1) {
-            vol_menu_jup = 0;
-          }
           break;
 
         //surround -------------------------------------------------//
@@ -1084,7 +1091,7 @@ void ir_control() {
       set_sub();
       set_speaker_mode();
       set_sub_ph();
-      set_reset();
+      //set_reset();
       ir_cl();
     }
     IrReceiver.resume();
@@ -1551,7 +1558,7 @@ void set_reset() {
     delay(2000);
     in = 0;
     sleepTime = -1;
-    mas_vol = 20;
+    mas_vol = 40;
     fl_vol = 0;
     fr_vol = 0;
     sl_vol = 0;
@@ -1590,21 +1597,21 @@ void set_speaker_mode() {
   }
   switch (speaker_mode) {
     case 0:  // 7.1 mode
-      digitalWrite(t_bt, LOW);
-      digitalWrite(t_aux, LOW);
+      if(in == 2) {
       digitalWrite(t_surr, HIGH);
       digitalWrite(t_subp, LOW);
+      }else {speaker_mode = 1;}
       break;
     case 1:  // 2.1 mode
       digitalWrite(t_surr, LOW);
       digitalWrite(t_subp, HIGH);
       break;
   }
-  set_sl();
-  set_sr();
-  set_rl();
-  set_rr();
-  set_cn();
+  //set_sl();
+  //set_sr();
+  //set_rl();
+  //set_rr();
+  //set_cn();
 }
 
 //input settings -----------------------------------------------------//
@@ -1615,16 +1622,20 @@ void set_in() {
   }
   switch (in) {
     case 0:
-      speaker_mode = 1;
+      //speaker_mode = 1;
+      //set_speaker_mode();
       digitalWrite(t_bt, HIGH);  // BLUETOOTH
       digitalWrite(t_aux, LOW);
+      speaker_mode = 1;
 
       break;
 
     case 1:
-      speaker_mode = 1;
+      //speaker_mode = 1;
+      //set_speaker_mode();
       digitalWrite(t_bt, LOW);  // AUX
       digitalWrite(t_aux, HIGH);
+      speaker_mode = 1;
       break;
 
     case 2:
@@ -1655,14 +1666,18 @@ void set_mute() {
     vol_on = 0;
   }
   switch (mute) {
-    case 0: digitalWrite(t_mute, HIGH);
-           /* if (speaker_mode == 1) {
-             digitalWrite(t_surr, HIGH);
-            } */
-     break;  // All CH mute disabled
-    case 1: digitalWrite(t_mute, LOW);
+    case 0: if(speaker_mode == 0) {                                // All CH UN_MUTE
+               digitalWrite(t_mute, HIGH);
+               digitalWrite(t_surr, HIGH);
+            }
+            if(speaker_mode == 1){
+              digitalWrite(t_surr, LOW);
+              digitalWrite(t_mute, HIGH);
+            }                        
+    break;  
+    case 1: digitalWrite(t_mute, LOW);                             // All CH MUTE
             digitalWrite(t_surr, LOW);
-     break;   // All CH mute
+    break;   
   }
 }
 
@@ -1679,12 +1694,14 @@ void set_mas_vol() {
   if (mas_vol == 69) {
     pt2258_mute = 1;
     mute = 1;
+    //set_mute();
   } else {
     pt2258_mute = 0;
     mute = 0;
+    //set_mute();
   }
   //pt2258.setMasterVolume(mas_vol);
-  set_pt2258_mute();
+  //set_pt2258_mute();
   set_mute();
 }
 void set_fl() {
@@ -1772,12 +1789,12 @@ void set_pt2258_mute() {
   switch (pt2258_mute) {
     case 0:
       pt2258.setMute(0);
-      ;
       break;  // mute disabled all ch
     case 1:
       pt2258.setMute(1);
-      ;
       break;  // mute all ch
   }
 }
+
+
 //end code
