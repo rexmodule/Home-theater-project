@@ -41,7 +41,6 @@ unsigned char channell_address10[24] =
    CHANNEL21_VOLUME_STEP_10, CHANNEL22_VOLUME_STEP_10,
    CHANNEL23_VOLUME_STEP_10, CHANNEL24_VOLUME_STEP_10};
 
-unsigned char addr[4] = {ADDR_00, ADDR_11, ADDR_10, ADDR_01};
 
 // helper method
 unsigned char PT2258::HEX2BCD (unsigned char x)
@@ -54,15 +53,19 @@ unsigned char PT2258::HEX2BCD (unsigned char x)
    
 // helper method
 int PT2258::writeI2CChar(unsigned char c)   
-{   for(int a=0; a<4; a++)
+{ 
    {
-//  shift address to right - Wire library always uses 7 bit addressing
-    Wire.beginTransmission(addr[a]);
-    Wire.write(c);   
+    Wire.beginTransmission(0x40);
+    Wire.write(c);
+    Wire.beginTransmission(0x46);
+    Wire.write(c); 
+    Wire.beginTransmission(0x44);
+    Wire.write(c); 
+    Wire.beginTransmission(0x42);
+    Wire.write(c);
+   }
     int rtnCode = Wire.endTransmission();
     return rtnCode;
-   }
-
 }
 
  
