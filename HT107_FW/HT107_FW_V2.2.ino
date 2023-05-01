@@ -1,6 +1,7 @@
-// 7.1 Surround System
-// by Rhythm Dey
+// 7.1 Surround System by Rhythm Dey
 
+#include <Arduino.h>
+#include <avr/wdt.h>
 #include <Wire.h>
 #include <EEPROM.h>
 #include <LiquidCrystal_I2C.h>
@@ -21,17 +22,11 @@ RotaryEncoder *encoder = nullptr;
 #define vol_delay 100
 #define lcd_timeout 30000
       
-// resistance at 25 degrees C
-#define THERMISTORNOMINAL 10000      
-// temp. for nominal resistance (almost always 25 C)
-#define TEMPERATURENOMINAL 25   
-// how many samples to take and average, more takes longer
-// but is more 'smooth'
-#define NUMSAMPLES 5
-// The beta coefficient of the thermistor (usually 3000-4000)
-#define BCOEFFICIENT 3950
-// the value of the 'other' resistor
-#define SERIESRESISTOR 10000 
+#define THERMISTORNOMINAL 10000                               // resistance at 25 degrees C     
+#define TEMPERATURENOMINAL 25                                 // temp. for nominal resistance (almost always 25 C)
+#define NUMSAMPLES 5                                          //how many samples to take and average, more takes longer but is more 'smooth'
+#define BCOEFFICIENT 3950                                     // The beta coefficient of the thermistor (usually 3000-4000)
+#define SERIESRESISTOR 10000                                  // the value of the 'other' resistor
 
 int samples1[NUMSAMPLES];
 int samples2[NUMSAMPLES];
@@ -123,8 +118,8 @@ unsigned long previousTime = 0;
 int in, mute, return_d, sub_ph, a, b, pos, newPos, power, menu, menu_active, speaker_mode, btn_press, long_press, vol_menu, vol_menu_jup, reset, fan_pwm;
 int fl, fr, sl, sr, rr, rl, cn, sub, ir_menu, ir_on, vol_on, mas_vol, fl_vol, fr_vol, sl_vol, sr_vol, rl_vol, rr_vol, cn_vol, sub_vol, pt2258_mute, sleepTime;
 
-long btn_timer = 0;
-long enc_long_press_time = 500;
+unsigned long btn_timer = 0;
+unsigned long enc_long_press_time = 500;
 float TX;
 bool ir_Receiver;
 
@@ -133,503 +128,15 @@ void checkPosition() {
   encoder->tick();  // just call tick() to check the state.
 }
 
-void setup() {
-   
-  Wire.setClock(100000);
-//  Serial.begin(9600);
-  //pt2258.init();
-  IrReceiver.begin(ir_sens, DISABLE_LED_FEEDBACK);
-  lcd.init(); 
-  lcd.clear();
-  
-  pinMode(sw_mute, INPUT_PULLUP);   // Mute
-  pinMode(sw_pwr, INPUT_PULLUP);    // Power
-  pinMode(enc_sw, INPUT_PULLUP);
-  pinMode(enc_dt, INPUT);  
-  pinMode(enc_clk, INPUT); 
-  pinMode(t_amp_power, OUTPUT);
-  pinMode(t_bt_power, OUTPUT);
-  pinMode(t_mute, OUTPUT);
-  pinMode(t_aux, OUTPUT);
-  pinMode(stb_led, OUTPUT);
-  pinMode(t_bt, OUTPUT);
-  pinMode(t_surr, OUTPUT);
-  pinMode(t_subp, OUTPUT);
-  pinMode(t_sub_ph, OUTPUT);
-  pinMode(OC1A_PIN, OUTPUT);
-
-  analogReference(EXTERNAL);
-
-  TCCR1A = 0;
-  TCCR1B = 0;
-  TCNT1  = 0;
-
-  TCCR1A |= (1 << COM1A1) | (1 << WGM11);
-  TCCR1B |= (1 << WGM13) | (1 << CS10);
-  ICR1 = TCNT1_TOP;
-
-  digitalWrite(t_amp_power, LOW);
-  digitalWrite(t_bt_power, HIGH);
-
-  encoder = new RotaryEncoder(enc_clk, enc_dt, RotaryEncoder::LatchMode::TWO03);
-
-  // register interrupt routine
-  attachInterrupt(digitalPinToInterrupt(enc_clk), checkPosition, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(enc_dt), checkPosition, CHANGE);
-
-
-  power = 0;
-  sleepTime = -1;
-  backlight = 1;
-  eeprom_read();
-  thermal();
-  amp_guard();
-  start_up();
-  power_up();
-
-} //setup end
-
-void loop() {
-  thermal();
-  amp_guard();
-  lcd_update();
-  eeprom_update();
-  ir_control();
-  return_delay();
-  static int pos = 0;
-/*  Serial.print("mas:  ");
-  Serial.print(mas_vol);
-  Serial.print("      sub:  ");
-  Serial.print(sub);
-  Serial.print("      enc:  ");
-  Serial.println(encoder->getPosition());  
-*/
-  encoder->tick();
-  newPos = encoder->getPosition();
-
-  if (menu_active == 0) {
-    custom_num_shape();
-  } else {
-    custom_shape();
-  }
-
-  //power -----------------------------------------------------//
-  if (power == 0) { 
-    if ((digitalRead(sw_pwr) == LOW || digitalRead(enc_sw) == LOW) && (TX <= temp_cooldown) && (menu_active != 110)) {
-      power = 1;
-      power_up();
-      lcd.clear();
-      delay(btn_delay);
-    }   
-  }
-  if (power == 1) {
-    if ((digitalRead(sw_pwr) == LOW)) {
-      power = 0;
-      power_up();
-      lcd.clear();
-      delay(btn_delay);
-    }
-  }
-
-  //select menu -----------------------------------------------//
-  if (digitalRead(enc_sw) == LOW) {
-    if (btn_press == 0) {
-      btn_press = 1;
-      btn_timer = millis();
-    }
-    if ((millis() - btn_timer > enc_long_press_time) && (long_press == 0) && (menu_active == 0)) {
-      long_press = 1;
-      menu_active = 1;
-      menu = 1;
-      btn_cl();
-      lcd.clear();
-    } else if ((millis() - btn_timer > enc_long_press_time) && (long_press == 0) && (menu_active == 1)) {
-      long_press = 1;
-      menu_active = 0;
-      vol_menu = 0;
-      reset = 0;
-      btn_cl();
-      lcd.clear();
-    }
-  } else {
-    if (btn_press == 1) {
-      if (long_press == 1) {
-        long_press = 0;
-      } else {
-        if (menu_active == 1) {
-          menu++;
-          if (menu > 5) {
-            menu = 1;
-          }
-          btn_cl();
-          lcd.clear();
-        } else if (menu_active == 0 && speaker_mode == 0) {
-          vol_menu++;
-          if (vol_menu > 8) {
-            vol_menu = 0;
-          }
-          btn_cl();
-        } else if (menu_active == 0 && speaker_mode == 1) {
-          vol_menu++;
-          if (vol_menu_jup == 0) {
-            if (vol_menu > 2) {
-              vol_menu = 8;
-              vol_menu_jup = 1;
-            }
-          }
-          if (vol_menu_jup == 1) {
-            if (vol_menu > 8) {
-              vol_menu = 0;
-              vol_menu_jup = 0;
-            }
-          }
-          btn_cl();
-        }
-      }
-      btn_press = 0;
-    }
-  }
-    
-  if (sleepTime != -1) {
-    
-    switch (sleepTime) {
-      case 0:
-      sleepTimer = millis() - currentSleepTime;
-      if (sleepTimer >= 30 * 60000){ 
-        sleepTime = -1;       
-        power = 0;
-        power_up();
-        }        // 30mins
-        
-      break;
-
-      case 1:
-      sleepTimer = millis() - currentSleepTime;
-      if (sleepTimer >= 45 * 60000){
-        sleepTime = -1;
-        power = 0;
-        power_up();
-        }        // 45min
-      break;
-      
-      case 2:
-      sleepTimer = millis() - currentSleepTime;
-      if (sleepTimer >= 60 * 60000){
-        sleepTime = -1;
-        power = 0;
-        power_up();
-        }       // 60min
-      break;
-
-      case 3:
-      sleepTimer = millis() - currentSleepTime;
-      if (sleepTimer >= 120 * 60000){
-        sleepTime = -1;
-        power = 0;
-        power_up();
-        }       // 120min
-      break;
-
-      case 4:
-      sleepTimer = millis() - currentSleepTime;
-      if (sleepTimer >= 180 * 60000){
-        sleepTime = -1;
-        power = 0;
-        power_up();        
-        }       // 180min
-      break;
-      }            
-    }
-
-    if (menu_active == 0 && backlight == 1 ){
-      dim = millis() - currentTime;
-      if(dim >= lcd_timeout){
-      lcd.noBacklight();
-      backlight= 0;
-      }
-    }
-    if (menu_active == 100 && backlight == 1){
-      dim = millis() - currentTime;
-      if(dim >= 10000){
-      lcd.noBacklight();
-      backlight= 0;
-      }
-    }
-    if (menu_active == 99) {
-      currentTime = millis();
-      if(currentTime - previousTime >= 750){
-        previousTime = currentTime;
-        if(backlight == 1){
-        lcd.backlight();
-        backlight = 0;
-        }else{
-        lcd.noBacklight();
-        backlight = 1;
-        }
-      }
-    }
-      
-  
-    if (menu_active == 110) {
-      currentTime = millis();
-      if(currentTime - previousTime >= 500){
-        previousTime = currentTime;
-        if(backlight == 1){
-        lcd.backlight();
-        backlight = 0;
-        }else{
-        lcd.noBacklight();
-        backlight = 1;
-        }
-      }
-    }
-
-  //mute ------------------------------------------------------//
-  if (digitalRead(sw_mute) == LOW) {
-    mute++;
-    if (mute == 1) {
-      menu_active = 99;
-    } else {
-      menu_active = 0;
-    }
-    set_mute();
-    delay(btn_delay);
-    lcd.clear();
-  }
-
-
-  //menu active 0 ---------------------------------------------//  volume up  //
-  if (menu_active == 0) {
-    if (pos < newPos) {
-      if (vol_menu == 0) {
-        mas_vol--;
-      }
-      if (vol_menu == 1) {
-        fl_vol--;
-      }
-      if (vol_menu == 2) {
-        fr_vol--;
-      }
-      if (vol_menu == 3) {
-        sl_vol--;
-      }
-      if (vol_menu == 4) {
-        sr_vol--;
-      }
-      if (vol_menu == 5) {
-        rl_vol--;
-      }
-      if (vol_menu == 6) {
-        rr_vol--;
-      }
-      if (vol_menu == 7) {
-        cn_vol--;
-      }
-      if (vol_menu == 8) {
-        sub_vol--;
-      }
-      set_mas_vol();
-      set_fl();
-      set_fr();
-      set_sl();
-      set_sr();
-      set_rl();
-      set_rr();
-      set_cn();
-      set_sub();
-      vol_cl();
-      pos = newPos;
-    }
-
-    //menu active 0----------------------------------------------// volume down //
-    if (pos > newPos) {
-      if (vol_menu == 0) {
-        mas_vol++;
-      }
-      if (vol_menu == 1) {
-        fl_vol++;
-      }
-      if (vol_menu == 2) {
-        fr_vol++;
-      }
-      if (vol_menu == 3) {
-        sl_vol++;
-      }
-      if (vol_menu == 4) {
-        sr_vol++;
-      }
-      if (vol_menu == 5) {
-        rl_vol++;
-      }
-      if (vol_menu == 6) {
-        rr_vol++;
-      }
-      if (vol_menu == 7) {
-        cn_vol++;
-      }
-      if (vol_menu == 8) {
-        sub_vol++;
-      }
-      set_mas_vol();
-      set_fl();
-      set_fr();
-      set_sl();
-      set_sr();
-      set_rl();
-      set_rr();
-      set_cn();
-      set_sub();
-      vol_cl();
-      pos = newPos;
-    }
-  }
-
-  //menu active 1 ---------------------------------------------// Menu //
-  if (menu_active == 1) {
-
-    //subwoofer phase--------------------------------------------//
-    if (menu == 3) {
-
-      if (pos < newPos) {
-        sub_ph++;
-        if (sub_ph > 1) {
-          sub_ph = 1;
-        }
-        set_sub_ph();
-        btn_cl();
-        pos = newPos;
-      }
-      if (pos > newPos) {
-        sub_ph--;
-        if (sub_ph < 0) {
-          sub_ph = 0;
-        }
-        set_sub_ph();
-        btn_cl();
-        pos = newPos;
-      }
-    }
-    //channel mode-----------------------------------------------//
-    if (menu == 2) {
-
-      if (pos < newPos) {
-        speaker_mode++;
-        if (speaker_mode > 1) {
-          speaker_mode = 1;
-        }
-        if (speaker_mode == 1) {
-          vol_menu_jup = 0;
-        }
-        set_speaker_mode();
-        btn_cl();
-        pos = newPos;
-      }
-      if ((pos > newPos) && (in == 2)) {
-        speaker_mode--;
-        if (speaker_mode < 0) {
-          speaker_mode = 0;
-        }
-        if (speaker_mode == 1) {
-          vol_menu_jup = 0;
-        }
-        set_speaker_mode();
-        btn_cl();
-        pos = newPos;
-      }
-    }
-    //input source----------------------------------------------//
-    if (menu == 1) {
-
-      if (pos < newPos) {
-        in++;
-        if (in > 2) {
-          in = 2;
-        }
-        set_in();
-        bt_power_sw();
-        btn_cl();
-        pos = newPos;
-      }
-      if (pos > newPos) {
-        in--;
-        if (in < 0) {
-          in = 0;
-        }
-        set_in();
-        bt_power_sw();
-        btn_cl();
-        pos = newPos;
-      }
-    }
-    if (menu == 4) {
-      if (pos < newPos) {
-        sleepTime++;
-        if (sleepTime > 4) {
-          sleepTime = 4;
-        }
-        set_sleep();
-        btn_cl();
-        pos = newPos;
-      }
-      if (pos > newPos) {
-        sleepTime--;
-        if (sleepTime < -1) {
-          sleepTime = -1;
-        }
-        set_sleep();
-        btn_cl();
-        pos = newPos;
-      }
-    }
-    if (menu == 5) {
-      if (pos > newPos) {
-        lcd.clear();
-        menu_active = 0;
-        pos = newPos;
-      } 
-
-      if (pos < newPos) {
-        reset++;
-        set_reset();
-        btn_cl();
-        pos = newPos;
-      }
-    }
-  }
+//backlight timout-------------------------------------------------------//
+void lcdBacklight() {
+  if(backlight == 1){
+    lcd.backlight();
+    currentTime = millis();
+  } 
 }
 
-//eeprom--------------------------------------------//
-
-void eeprom_update() {
-  EEPROM.update(0, in);
-  EEPROM.update(1, mas_vol);
-  EEPROM.update(2, fl_vol + 10);
-  EEPROM.update(3, fr_vol + 10);
-  EEPROM.update(4, sl_vol + 10);
-  EEPROM.update(5, sr_vol + 10);
-  EEPROM.update(6, rl_vol + 10);
-  EEPROM.update(7, rr_vol + 10);
-  EEPROM.update(8, cn_vol + 10);
-  EEPROM.update(9, sub_vol + 10);
-  EEPROM.update(10, sub_ph);
-  EEPROM.update(11, speaker_mode);
-}
-
-void eeprom_read() { 
-  in = EEPROM.read(0);
-  mas_vol = EEPROM.read(1);
-  fl_vol = EEPROM.read(2) - 10;
-  fr_vol = EEPROM.read(3) - 10;
-  sl_vol = EEPROM.read(4) - 10;
-  sr_vol = EEPROM.read(5) - 10;
-  rl_vol = EEPROM.read(6) - 10;
-  rr_vol = EEPROM.read(7) - 10;
-  cn_vol = EEPROM.read(8) - 10;
-  sub_vol = EEPROM.read(9) - 10;
-  sub_ph = EEPROM.read(10);
-  speaker_mode = EEPROM.read(11);
-}
-
+//Button debounce--------------------------------------------------------//
 void btn_cl() {
   delay(btn_delay);
   time = millis();
@@ -637,7 +144,6 @@ void btn_cl() {
   backlight = 1;
   lcdBacklight();
 }
-
 void vol_cl() {
   delay(vol_delay);
   time = millis();
@@ -668,6 +174,7 @@ void return_delay() {
   }
 }
 
+//Sleep timer------------------------------------------------------------//
 void set_sleep() {
   if (sleepTime > 4) {
     sleepTime = -1;      
@@ -677,7 +184,7 @@ void set_sleep() {
   } 
 }
 
-//Thermal---------------------------------------------------------------------/
+//Thermal----------------------------------------------------------------//
 void thermal() {
  uint8_t i;
   float average1, average2, t1, t2 ;
@@ -686,7 +193,7 @@ void thermal() {
   for (i=0; i< NUMSAMPLES; i++) {
    samples1[i] = analogRead(t_sens1);
    samples2[i] = analogRead(t_sens2);
-   delay(10);
+   delay(1);
   }
   
   // average all the samples out
@@ -731,48 +238,275 @@ void thermal() {
   }
 }
 
-//AMP Guard------------------------------------------------------//
-void amp_guard() {
-  if ( (power == 1 || power == 0 ) && TX > temp_lim) {
-    power = 0;
-    power_up();
-    menu_active = 110;
-  }
-  else if ( power == 0 && TX < temp_cooldown && menu_active == 110) { 
-    backlight = 1;
-    menu_active = 100;
-    lcdBacklight();
-     
-  }
-
-  int temp = TX  ;
-  if ( temp < 25) {
-    temp = 25;
-  }
-  
-  if ( temp > 50) {
-    temp = 50;
-  }
-  fan_pwm = map(temp, 25, 50, fan_min, fan_max);
-
-  if (power == 1){
-    setPwmDuty(fan_pwm);
-  }
-  if (power == 0 && TX < temp_cooldown)  {
-    setPwmDuty(0);
-  }
-  else if (power == 0 && TX > temp_cooldown){
-    setPwmDuty(fan_pwm);
-  }
-}
-
+//Fan PWM----------------------------------------------------------------//
 void setPwmDuty (byte duty) {
   OCR1A = (word) (duty*TCNT1_TOP)/100;
 }
 
+//SUB Phase--------------------------------------------------------------//
+void set_sub_ph() {
+  if (sub_ph > 1) {
+    sub_ph = 0;
+  }
 
-//power up -----------------------------------------------------//
+  switch (sub_ph) {
+    case 0: digitalWrite(t_sub_ph, LOW); break;   // Sub Woofer Phase 0 degree
+    case 1: digitalWrite(t_sub_ph, HIGH); break;  // Sub Woofer Phase 180 degree
+  }
+}
 
+//Mutting----------------------------------------------------------------//
+void set_mute() {
+  if (mute > 1) {
+    mute = 0;
+  }
+  if (mute == 1) {
+    vol_on = 1;
+  } else {
+    vol_on = 0;
+  }
+  switch (mute) {
+    case 0: if(speaker_mode == 0) {                                // All CH UN_MUTE
+               digitalWrite(t_mute, HIGH);
+               digitalWrite(t_surr, HIGH);
+            }
+            if(speaker_mode == 1){
+              digitalWrite(t_surr, LOW);
+              digitalWrite(t_mute, HIGH);
+            }                        
+    break;  
+    case 1: digitalWrite(t_mute, LOW);                             // All CH MUTE
+            digitalWrite(t_surr, LOW);
+    break;   
+  }
+}
+
+//speaker mode ----------------------------------------------------------//
+void set_speaker_mode() {
+  if (speaker_mode > 1) {
+    speaker_mode = 0;
+  }
+  switch (speaker_mode) {
+    case 0:  // 7.1 mode
+      if(in == 2) {
+      digitalWrite(t_surr, HIGH);
+      digitalWrite(t_subp, LOW);
+      }else {speaker_mode = 1;}
+      break;
+    case 1:  // 2.1 mode
+      digitalWrite(t_surr, LOW);
+      digitalWrite(t_subp, HIGH);
+      break;
+  }
+  //set_sl();
+  //set_sr();
+  //set_rl();
+  //set_rr();
+  //set_cn();
+}
+
+//input settings --------------------------------------------------------//
+void set_in() {
+  if (in > 2) {
+    in = 0;
+  }
+  switch (in) {
+    case 0:
+      //speaker_mode = 1;
+      //set_speaker_mode();
+      digitalWrite(t_bt, HIGH);  // BLUETOOTH
+      digitalWrite(t_aux, LOW);
+      speaker_mode = 1;
+
+      break;
+
+    case 1:
+      //speaker_mode = 1;
+      //set_speaker_mode();
+      digitalWrite(t_bt, LOW);  // AUX
+      digitalWrite(t_aux, HIGH);
+      speaker_mode = 1;
+      break;
+
+    case 2:
+      digitalWrite(t_bt, LOW);  // PC
+      digitalWrite(t_aux, LOW);
+      break;
+  }
+  set_speaker_mode();
+}
+
+//pt2258 settings -------------------------------------------------------//
+void set_mas_vol() {
+  if (mas_vol > 69) {
+    mas_vol = 69;
+  }
+  if (mas_vol < 10) {
+    mas_vol = 10;
+  }
+  if (mas_vol == 69) {
+    pt2258_mute = 1;
+    mute = 1;
+    //set_mute();
+  } else {
+    pt2258_mute = 0;
+    mute = 0;
+    //set_mute();
+  }
+  //pt2258.setMasterVolume(mas_vol);
+  //set_pt2258_mute();
+  set_mute();
+}
+void set_fl() {
+  if (fl_vol > 10) {
+    fl_vol = 10;
+  }
+  if (fl_vol < -10) {
+    fl_vol = -10;
+  }
+  fl = mas_vol + fl_vol;
+  pt2258.setChannelVolume(fl, 0);  //CH1
+}
+void set_fr() {
+  if (fr_vol > 10) {
+    fr_vol = 10;
+  }
+  if (fr_vol < -10) {
+    fr_vol = -10 ;
+  }
+  fr = mas_vol + fr_vol;
+  pt2258.setChannelVolume(fr, 1);  // CH2
+}
+void set_sl() {
+  if (sl_vol > 10) {
+    sl_vol = 10;
+  }
+  if (sl_vol < -10) {
+    sl_vol = -10;
+  }
+  sl = mas_vol + sl_vol;
+  pt2258.setChannelVolume(sl, 2);  // CH3
+}
+void set_sr() {
+  if (sr_vol > 10) {
+    sr_vol = 10;
+  }
+  if (sr_vol < -10) {
+    sr_vol = -10;
+  }
+  sr = mas_vol + sr_vol;
+  pt2258.setChannelVolume(sr, 3);  // CH4
+}
+void set_rl() {
+  if (rl_vol > 10) {
+    rl_vol = 10;
+  }
+  if (rl_vol < -10) {
+    rl_vol = -10;
+  }
+  rl = mas_vol + rl_vol;
+  pt2258.setChannelVolume(rl, 4);  // CH5
+}
+void set_rr() {
+  if (rr_vol > 10) {
+    rr_vol = 10;
+  }
+  if (rr_vol < -10) {
+    rr_vol = -10;
+  }
+  rr = mas_vol + rr_vol;
+  pt2258.setChannelVolume(rr, 5);  // CH6
+}
+void set_cn() {
+  if (cn_vol > 10) {
+    cn_vol = 10;
+  }
+  if (cn_vol < -10) {
+    cn_vol = -10;
+  }
+  cn = mas_vol + cn_vol;
+  pt2258.setChannelVolume(cn, 6);  // CH7
+}
+void set_sub() {
+  if (sub_vol > 10) {
+    sub_vol = 10;
+  }
+  if (sub_vol < -10) {
+    sub_vol = -10;
+  }
+  sub = mas_vol + sub_vol;
+  pt2258.setChannelVolume(sub, 7);  // CH8
+}
+void set_pt2258_mute() {
+  switch (pt2258_mute) {
+    case 0:
+      pt2258.setMute(0);
+      break;  // mute disabled all ch
+    case 1:
+      pt2258.setMute(1);
+      break;  // mute all ch
+  }
+}
+
+//bluetooth power-------------------------------------------------------//
+void bt_power_sw() {
+  if (power == 1) {
+    if (in == 0) {
+      digitalWrite(t_bt_power, LOW);
+    } else {
+      digitalWrite(t_bt_power, HIGH);
+    }
+  } else {
+    digitalWrite(t_bt_power, HIGH);
+  }
+}
+
+//all reset ------------------------------------------------------------//
+void set_reset() {
+  if (reset == 1) {
+    lcd.setCursor(0, 0);
+    lcd.print(F("                    "));
+    lcd.setCursor(0, 1);
+    lcd.print(F("                    "));
+    lcd.setCursor(0, 2);
+    lcd.print(F("    AMP RESTORED    "));
+    lcd.setCursor(0, 3);
+    lcd.print(F("                    "));
+    delay(2000);
+    in = 0;
+    sleepTime = -1;
+    mas_vol = 40;
+    fl_vol = 0;
+    fr_vol = 0;
+    sl_vol = 0;
+    sr_vol = 0;
+    rl_vol = 0;
+    rr_vol = 0;
+    cn_vol = 0;
+    sub_vol = 0;
+    speaker_mode = 1;
+    sub_ph = 0;
+    vol_menu = 0;
+    menu_active = 0;
+    reset = 0;
+    lcd.clear();
+  }
+  set_in();
+  set_fl();
+  set_fr();
+  set_sl();
+  set_sr();
+  set_rl();
+  set_rr();
+  set_cn();
+  set_sub();
+  set_speaker_mode();
+  set_sub_ph();
+  bt_power_sw();
+  
+}
+
+//power up -------------------------------------------------------------//
 void power_up() {
   if (power == 1) {
     digitalWrite(stb_led, LOW);
@@ -847,15 +581,38 @@ void power_up() {
   }
 }
 
-void bt_power_sw() {
-  if (power == 1) {
-    if (in == 0) {
-      digitalWrite(t_bt_power, LOW);
-    } else {
-      digitalWrite(t_bt_power, HIGH);
-    }
-  } else {
-    digitalWrite(t_bt_power, HIGH);
+//AMP Guard--------------------------------------------------------------//
+void amp_guard() {
+  if ( (power == 1 || power == 0 ) && TX > temp_lim) {
+    power = 0;
+    power_up();
+    menu_active = 110;
+  }
+  else if ( power == 0 && TX < temp_cooldown && menu_active == 110) { 
+    backlight = 1;
+    menu_active = 100;
+    lcdBacklight();
+     
+  }
+
+  int temp = TX  ;
+  if ( temp < 25) {
+    temp = 25;
+  }
+  
+  if ( temp > 50) {
+    temp = 50;
+  }
+  fan_pwm = map(temp, 25, 50, fan_min, fan_max);
+
+  if (power == 1){
+    setPwmDuty(fan_pwm);
+  }
+  if (power == 0 && TX < temp_cooldown)  {
+    setPwmDuty(0);
+  }
+  else if (power == 0 && TX > temp_cooldown){
+    setPwmDuty(fan_pwm);
   }
 }
 
@@ -891,10 +648,7 @@ void start_up() {
    
 }
 
-
-
-// IR control --------------------------------------------------------------------------------//
-
+// IR control ----------------------------------------------------------//
 void ir_control() {
   if (IrReceiver.decode()) {
 
@@ -1099,21 +853,16 @@ void ir_control() {
   }
 }
 
-
-
-//custom shape --------------------------------------------------------------------------------//
-
+//custom shape ---------------------------------------------------------//
 void custom_num_shape() {
   for (int i = 0; i < 8; i++)
     lcd.createChar(i, custom_num[i]);
 }
-
 void custom_shape() {
   lcd.createChar(1, arrow_right);
 }
 
-//lcd ---------------------------------------------------------//
-
+//lcd ------------------------------------------------------------------//
 void lcd_update() {
   int c;
   switch (menu_active) {
@@ -1536,265 +1285,451 @@ void lcd_update() {
   }
 }
 
-void lcdBacklight() {
-  if(backlight == 1){
-    lcd.backlight();
-    currentTime = millis();
-  } 
+//EEPROM---------------------------------------------------------------//
+void eeprom_update() {
+  EEPROM.update(0, in);
+  EEPROM.update(1, mas_vol);
+  EEPROM.update(2, fl_vol + 10);
+  EEPROM.update(3, fr_vol + 10);
+  EEPROM.update(4, sl_vol + 10);
+  EEPROM.update(5, sr_vol + 10);
+  EEPROM.update(6, rl_vol + 10);
+  EEPROM.update(7, rr_vol + 10);
+  EEPROM.update(8, cn_vol + 10);
+  EEPROM.update(9, sub_vol + 10);
+  EEPROM.update(10, sub_ph);
+  EEPROM.update(11, speaker_mode);
+}
+void eeprom_read() { 
+  in = EEPROM.read(0);
+  mas_vol = EEPROM.read(1);
+  fl_vol = EEPROM.read(2) - 10;
+  fr_vol = EEPROM.read(3) - 10;
+  sl_vol = EEPROM.read(4) - 10;
+  sr_vol = EEPROM.read(5) - 10;
+  rl_vol = EEPROM.read(6) - 10;
+  rr_vol = EEPROM.read(7) - 10;
+  cn_vol = EEPROM.read(8) - 10;
+  sub_vol = EEPROM.read(9) - 10;
+  sub_ph = EEPROM.read(10);
+  speaker_mode = EEPROM.read(11);
 }
 
-//all reset --------------------------------------------------------------------------------//
+//Setup----------------------------------------------------------------//
+void setup() {
+   
+  Wire.setClock(100000);
+  wdt_enable(WDTO_8S);
+  IrReceiver.begin(ir_sens, DISABLE_LED_FEEDBACK);
+  lcd.init(); 
+  lcd.clear();
+  
+  pinMode(sw_mute, INPUT_PULLUP);   // Mute
+  pinMode(sw_pwr, INPUT_PULLUP);    // Power
+  pinMode(enc_sw, INPUT_PULLUP);
+  pinMode(enc_dt, INPUT);  
+  pinMode(enc_clk, INPUT); 
+  pinMode(t_amp_power, OUTPUT);
+  pinMode(t_bt_power, OUTPUT);
+  pinMode(t_mute, OUTPUT);
+  pinMode(t_aux, OUTPUT);
+  pinMode(stb_led, OUTPUT);
+  pinMode(t_bt, OUTPUT);
+  pinMode(t_surr, OUTPUT);
+  pinMode(t_subp, OUTPUT);
+  pinMode(t_sub_ph, OUTPUT);
+  pinMode(OC1A_PIN, OUTPUT);
 
-void set_reset() {
-  if (reset == 1) {
-    lcd.setCursor(0, 0);
-    lcd.print(F("                    "));
-    lcd.setCursor(0, 1);
-    lcd.print(F("                    "));
-    lcd.setCursor(0, 2);
-    lcd.print(F("    AMP RESTORED    "));
-    lcd.setCursor(0, 3);
-    lcd.print(F("                    "));
-    delay(2000);
-    in = 0;
-    sleepTime = -1;
-    mas_vol = 40;
-    fl_vol = 0;
-    fr_vol = 0;
-    sl_vol = 0;
-    sr_vol = 0;
-    rl_vol = 0;
-    rr_vol = 0;
-    cn_vol = 0;
-    sub_vol = 0;
-    speaker_mode = 1;
-    sub_ph = 0;
-    vol_menu = 0;
-    menu_active = 0;
-    reset = 0;
+  analogReference(EXTERNAL);
+
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCNT1  = 0;
+
+  TCCR1A |= (1 << COM1A1) | (1 << WGM11);
+  TCCR1B |= (1 << WGM13) | (1 << CS10);
+  ICR1 = TCNT1_TOP;
+
+  digitalWrite(t_amp_power, LOW);
+  digitalWrite(t_bt_power, HIGH);
+
+  encoder = new RotaryEncoder(enc_clk, enc_dt, RotaryEncoder::LatchMode::TWO03);
+
+  // register interrupt routine
+  attachInterrupt(digitalPinToInterrupt(enc_clk), checkPosition, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(enc_dt), checkPosition, CHANGE);
+
+
+  power = 0;
+  sleepTime = -1;
+  backlight = 1;
+  eeprom_read();
+  thermal();
+  amp_guard();
+  start_up();
+  power_up();
+
+} //setup end
+
+//Loop-----------------------------------------------------------------//
+void loop() {
+  thermal();
+  amp_guard();
+  lcd_update();
+  eeprom_update();
+  ir_control();
+  return_delay();
+  static int pos = 0;
+  encoder->tick();
+  newPos = encoder->getPosition();
+
+  if (menu_active == 0) {
+    custom_num_shape();
+  } else {
+    custom_shape();
+  }
+
+  //power -----------------------------------------------------//
+  if (power == 0) { 
+    if ((digitalRead(sw_pwr) == LOW || digitalRead(enc_sw) == LOW) && (TX <= temp_cooldown) && (menu_active != 110)) {
+      power = 1;
+      power_up();
+      lcd.clear();
+      delay(btn_delay);
+    }   
+  }
+  if (power == 1) {
+    if ((digitalRead(sw_pwr) == LOW)) {
+      power = 0;
+      power_up();
+      lcd.clear();
+      delay(btn_delay);
+    }
+  }
+
+  //select menu -----------------------------------------------//
+  if (digitalRead(enc_sw) == LOW) {
+    if (btn_press == 0) {
+      btn_press = 1;
+      btn_timer = millis();
+    }
+    if ((millis() - btn_timer > enc_long_press_time) && (long_press == 0) && (menu_active == 0)) {
+      long_press = 1;
+      menu_active = 1;
+      menu = 1;
+      btn_cl();
+      lcd.clear();
+    } else if ((millis() - btn_timer > enc_long_press_time) && (long_press == 0) && (menu_active == 1)) {
+      long_press = 1;
+      menu_active = 0;
+      vol_menu = 0;
+      reset = 0;
+      btn_cl();
+      lcd.clear();
+    }
+  } else {
+    if (btn_press == 1) {
+      if (long_press == 1) {
+        long_press = 0;
+      } else {
+        if (menu_active == 1) {
+          menu++;
+          if (menu > 5) {
+            menu = 1;
+          }
+          btn_cl();
+          lcd.clear();
+        } else if (menu_active == 0 && speaker_mode == 0) {
+          vol_menu++;
+          if (vol_menu > 8) {
+            vol_menu = 0;
+          }
+          btn_cl();
+        } else if (menu_active == 0 && speaker_mode == 1) {
+          vol_menu++;
+          if (vol_menu_jup == 0) {
+            if (vol_menu > 2) {
+              vol_menu = 8;
+              vol_menu_jup = 1;
+            }
+          }
+          if (vol_menu_jup == 1) {
+            if (vol_menu > 8) {
+              vol_menu = 0;
+              vol_menu_jup = 0;
+            }
+          }
+          btn_cl();
+        }
+      }
+      btn_press = 0;
+    }
+  }
+    
+  if (sleepTime != -1) {
+  const uint32_t sleepTimes[] = {30, 45, 60, 120, 180}; // in minutes
+  uint32_t sleepTimer = (millis() - currentSleepTime) / 60000; // convert to minutes
+  if (sleepTimer >= sleepTimes[sleepTime]) {
+    power = 0;
+    power_up();
+  }
+}
+
+    if (menu_active == 0 && backlight == 1 ){
+      dim = millis() - currentTime;
+      if(dim >= lcd_timeout){
+      lcd.noBacklight();
+      backlight= 0;
+      }
+    }
+    if (menu_active == 100 && backlight == 1){
+      dim = millis() - currentTime;
+      if(dim >= 10000){
+      lcd.noBacklight();
+      backlight= 0;
+      }
+    }
+    if (menu_active == 99) {
+      currentTime = millis();
+      if(currentTime - previousTime >= 750){
+        previousTime = currentTime;
+        if(backlight == 1){
+        lcd.backlight();
+        backlight = 0;
+        }else{
+        lcd.noBacklight();
+        backlight = 1;
+        }
+      }
+    }
+      
+  
+    if (menu_active == 110) {
+      currentTime = millis();
+      if(currentTime - previousTime >= 500){
+        previousTime = currentTime;
+        if(backlight == 1){
+        lcd.backlight();
+        backlight = 0;
+        }else{
+        lcd.noBacklight();
+        backlight = 1;
+        }
+      }
+    }
+
+  //mute ------------------------------------------------------//
+  if (digitalRead(sw_mute) == LOW) {
+    mute++;
+    if (mute == 1) {
+      menu_active = 99;
+    } else {
+      menu_active = 0;
+    }
+    set_mute();
+    delay(btn_delay);
     lcd.clear();
   }
-  set_in();
-  set_fl();
-  set_fr();
-  set_sl();
-  set_sr();
-  set_rl();
-  set_rr();
-  set_cn();
-  set_sub();
-  set_speaker_mode();
-  set_sub_ph();
-  bt_power_sw();
-  
-}
-
-//speaker mode --------------------------------------------------------------------------------//
-
-void set_speaker_mode() {
-  if (speaker_mode > 1) {
-    speaker_mode = 0;
-  }
-  switch (speaker_mode) {
-    case 0:  // 7.1 mode
-      if(in == 2) {
-      digitalWrite(t_surr, HIGH);
-      digitalWrite(t_subp, LOW);
-      }else {speaker_mode = 1;}
-      break;
-    case 1:  // 2.1 mode
-      digitalWrite(t_surr, LOW);
-      digitalWrite(t_subp, HIGH);
-      break;
-  }
-  //set_sl();
-  //set_sr();
-  //set_rl();
-  //set_rr();
-  //set_cn();
-}
-
-//input settings -----------------------------------------------------//
-
-void set_in() {
-  if (in > 2) {
-    in = 0;
-  }
-  switch (in) {
-    case 0:
-      //speaker_mode = 1;
-      //set_speaker_mode();
-      digitalWrite(t_bt, HIGH);  // BLUETOOTH
-      digitalWrite(t_aux, LOW);
-      speaker_mode = 1;
-
-      break;
-
-    case 1:
-      //speaker_mode = 1;
-      //set_speaker_mode();
-      digitalWrite(t_bt, LOW);  // AUX
-      digitalWrite(t_aux, HIGH);
-      speaker_mode = 1;
-      break;
-
-    case 2:
-      digitalWrite(t_bt, LOW);  // PC
-      digitalWrite(t_aux, LOW);
-      break;
-  }
-  set_speaker_mode();
-}
-void set_sub_ph() {
-  if (sub_ph > 1) {
-    sub_ph = 0;
-  }
-
-  switch (sub_ph) {
-    case 0: digitalWrite(t_sub_ph, LOW); break;   // Sub Woofer Phase 0 degree
-    case 1: digitalWrite(t_sub_ph, HIGH); break;  // Sub Woofer Phase 180 degree
-  }
-}
-
-void set_mute() {
-  if (mute > 1) {
-    mute = 0;
-  }
-  if (mute == 1) {
-    vol_on = 1;
-  } else {
-    vol_on = 0;
-  }
-  switch (mute) {
-    case 0: if(speaker_mode == 0) {                                // All CH UN_MUTE
-               digitalWrite(t_mute, HIGH);
-               digitalWrite(t_surr, HIGH);
-            }
-            if(speaker_mode == 1){
-              digitalWrite(t_surr, LOW);
-              digitalWrite(t_mute, HIGH);
-            }                        
-    break;  
-    case 1: digitalWrite(t_mute, LOW);                             // All CH MUTE
-            digitalWrite(t_surr, LOW);
-    break;   
-  }
-}
 
 
-//pt2258 settings -----------------------------------------------------//
+  //menu active 0 ---------------------------------------------//  volume up  //
+  if (menu_active == 0) {
+    if (pos < newPos) {
+      if (vol_menu == 0) {
+        mas_vol--;
+      }
+      if (vol_menu == 1) {
+        fl_vol--;
+      }
+      if (vol_menu == 2) {
+        fr_vol--;
+      }
+      if (vol_menu == 3) {
+        sl_vol--;
+      }
+      if (vol_menu == 4) {
+        sr_vol--;
+      }
+      if (vol_menu == 5) {
+        rl_vol--;
+      }
+      if (vol_menu == 6) {
+        rr_vol--;
+      }
+      if (vol_menu == 7) {
+        cn_vol--;
+      }
+      if (vol_menu == 8) {
+        sub_vol--;
+      }
+      set_mas_vol();
+      set_fl();
+      set_fr();
+      set_sl();
+      set_sr();
+      set_rl();
+      set_rr();
+      set_cn();
+      set_sub();
+      vol_cl();
+      pos = newPos;
+    }
 
-void set_mas_vol() {
-  if (mas_vol > 69) {
-    mas_vol = 69;
+    //menu active 0----------------------------------------------// volume down //
+    if (pos > newPos) {
+      if (vol_menu == 0) {
+        mas_vol++;
+      }
+      if (vol_menu == 1) {
+        fl_vol++;
+      }
+      if (vol_menu == 2) {
+        fr_vol++;
+      }
+      if (vol_menu == 3) {
+        sl_vol++;
+      }
+      if (vol_menu == 4) {
+        sr_vol++;
+      }
+      if (vol_menu == 5) {
+        rl_vol++;
+      }
+      if (vol_menu == 6) {
+        rr_vol++;
+      }
+      if (vol_menu == 7) {
+        cn_vol++;
+      }
+      if (vol_menu == 8) {
+        sub_vol++;
+      }
+      set_mas_vol();
+      set_fl();
+      set_fr();
+      set_sl();
+      set_sr();
+      set_rl();
+      set_rr();
+      set_cn();
+      set_sub();
+      vol_cl();
+      pos = newPos;
+    }
   }
-  if (mas_vol < 10) {
-    mas_vol = 10;
-  }
-  if (mas_vol == 69) {
-    pt2258_mute = 1;
-    mute = 1;
-    //set_mute();
-  } else {
-    pt2258_mute = 0;
-    mute = 0;
-    //set_mute();
-  }
-  //pt2258.setMasterVolume(mas_vol);
-  //set_pt2258_mute();
-  set_mute();
-}
-void set_fl() {
-  if (fl_vol > 10) {
-    fl_vol = 10;
-  }
-  if (fl_vol < -10) {
-    fl_vol = -10;
-  }
-  fl = mas_vol + fl_vol;
-  pt2258.setChannelVolume(fl, 0);  //CH1
-}
-void set_fr() {
-  if (fr_vol > 10) {
-    fr_vol = 10;
-  }
-  if (fr_vol < -10) {
-    fr_vol = -10 ;
-  }
-  fr = mas_vol + fr_vol;
-  pt2258.setChannelVolume(fr, 1);  // CH2
-}
-void set_sl() {
-  if (sl_vol > 10) {
-    sl_vol = 10;
-  }
-  if (sl_vol < -10) {
-    sl_vol = -10;
-  }
-  sl = mas_vol + sl_vol;
-  pt2258.setChannelVolume(sl, 2);  // CH3
-}
-void set_sr() {
-  if (sr_vol > 10) {
-    sr_vol = 10;
-  }
-  if (sr_vol < -10) {
-    sr_vol = -10;
-  }
-  sr = mas_vol + sr_vol;
-  pt2258.setChannelVolume(sr, 3);  // CH4
-}
 
-void set_rl() {
-  if (rl_vol > 10) {
-    rl_vol = 10;
-  }
-  if (rl_vol < -10) {
-    rl_vol = -10;
-  }
-  rl = mas_vol + rl_vol;
-  pt2258.setChannelVolume(rl, 4);  // CH5
-}
-void set_rr() {
-  if (rr_vol > 10) {
-    rr_vol = 10;
-  }
-  if (rr_vol < -10) {
-    rr_vol = -10;
-  }
-  rr = mas_vol + rr_vol;
-  pt2258.setChannelVolume(rr, 5);  // CH6
-}
-void set_cn() {
-  if (cn_vol > 10) {
-    cn_vol = 10;
-  }
-  if (cn_vol < -10) {
-    cn_vol = -10;
-  }
-  cn = mas_vol + cn_vol;
-  pt2258.setChannelVolume(cn, 6);  // CH7
-}
-void set_sub() {
-  if (sub_vol > 10) {
-    sub_vol = 10;
-  }
-  if (sub_vol < -10) {
-    sub_vol = -10;
-  }
-  sub = mas_vol + sub_vol;
-  pt2258.setChannelVolume(sub, 7);  // CH8
-}
-void set_pt2258_mute() {
-  switch (pt2258_mute) {
-    case 0:
-      pt2258.setMute(0);
-      break;  // mute disabled all ch
-    case 1:
-      pt2258.setMute(1);
-      break;  // mute all ch
-  }
-}
+  //menu active 1 ---------------------------------------------// Menu //
+  if (menu_active == 1) {
 
+    //subwoofer phase--------------------------------------------//
+    if (menu == 3) {
 
+      if (pos < newPos) {
+        sub_ph++;
+        if (sub_ph > 1) {
+          sub_ph = 1;
+        }
+        set_sub_ph();
+        btn_cl();
+        pos = newPos;
+      }
+      if (pos > newPos) {
+        sub_ph--;
+        if (sub_ph < 0) {
+          sub_ph = 0;
+        }
+        set_sub_ph();
+        btn_cl();
+        pos = newPos;
+      }
+    }
+    //channel mode-----------------------------------------------//
+    if (menu == 2) {
+
+      if (pos < newPos) {
+        speaker_mode++;
+        if (speaker_mode > 1) {
+          speaker_mode = 1;
+        }
+        if (speaker_mode == 1) {
+          vol_menu_jup = 0;
+        }
+        set_speaker_mode();
+        btn_cl();
+        pos = newPos;
+      }
+      if ((pos > newPos) && (in == 2)) {
+        speaker_mode--;
+        if (speaker_mode < 0) {
+          speaker_mode = 0;
+        }
+        if (speaker_mode == 1) {
+          vol_menu_jup = 0;
+        }
+        set_speaker_mode();
+        btn_cl();
+        pos = newPos;
+      }
+    }
+    //input source----------------------------------------------//
+    if (menu == 1) {
+
+      if (pos < newPos) {
+        in++;
+        if (in > 2) {
+          in = 2;
+        }
+        set_in();
+        bt_power_sw();
+        btn_cl();
+        pos = newPos;
+      }
+      if (pos > newPos) {
+        in--;
+        if (in < 0) {
+          in = 0;
+        }
+        set_in();
+        bt_power_sw();
+        btn_cl();
+        pos = newPos;
+      }
+    }
+    if (menu == 4) {
+      if (pos < newPos) {
+        sleepTime++;
+        if (sleepTime > 4) {
+          sleepTime = 4;
+        }
+        set_sleep();
+        btn_cl();
+        pos = newPos;
+      }
+      if (pos > newPos) {
+        sleepTime--;
+        if (sleepTime < -1) {
+          sleepTime = -1;
+        }
+        set_sleep();
+        btn_cl();
+        pos = newPos;
+      }
+    }
+    if (menu == 5) {
+      if (pos > newPos) {
+        lcd.clear();
+        menu_active = 0;
+        pos = newPos;
+      } 
+
+      if (pos < newPos) {
+        reset++;
+        set_reset();
+        btn_cl();
+        pos = newPos;
+      }
+    }
+  }
+  wdt_reset();
+}
 //end code
