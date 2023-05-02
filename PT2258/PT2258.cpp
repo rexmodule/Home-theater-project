@@ -41,6 +41,7 @@ unsigned char channell_address10[24] =
    CHANNEL21_VOLUME_STEP_10, CHANNEL22_VOLUME_STEP_10,
    CHANNEL23_VOLUME_STEP_10, CHANNEL24_VOLUME_STEP_10};
 
+int rtnCode;
 
 // helper method
 unsigned char PT2258::HEX2BCD (unsigned char x)
@@ -57,14 +58,17 @@ int PT2258::writeI2CChar(unsigned char c)
    {
     Wire.beginTransmission(0x40);
     Wire.write(c);
+    rtnCode = Wire.endTransmission();
     Wire.beginTransmission(0x46);
-    Wire.write(c); 
+    Wire.write(c);
+    rtnCode = Wire.endTransmission();
     Wire.beginTransmission(0x44);
-    Wire.write(c); 
+    Wire.write(c);
+    rtnCode = Wire.endTransmission();
     Wire.beginTransmission(0x42);
     Wire.write(c);
+    rtnCode = Wire.endTransmission();
    }
-    int rtnCode = Wire.endTransmission();
     return rtnCode;
 }
 
@@ -93,7 +97,7 @@ int PT2258::init(void)
      Wire.endTransmission();       // stop transmitting
     }
 
-    else if (chno >=6 && chno <=11 )
+    if (chno >=6 && chno <=11 )
     {
      Wire.beginTransmission(ADDR_11); // transmit to device 0x46, PT2258
      Wire.write(channell_address01[chno] | (HEX2BCD(channelVolume)   &  0x0f));   
@@ -101,7 +105,7 @@ int PT2258::init(void)
      Wire.endTransmission();       // stop transmitting
     }
       
-    else if (chno >=12 && chno <=17 )
+    if (chno >=12 && chno <=17 )
     {
      Wire.beginTransmission(ADDR_10); // transmit to device 0x46, PT2258
      Wire.write(channell_address01[chno] | (HEX2BCD(channelVolume)   &  0x0f));   
@@ -109,7 +113,7 @@ int PT2258::init(void)
      Wire.endTransmission();       // stop transmitting
     }
       
-    else if (chno >=18 && chno <=23 )
+    if (chno >=18 && chno <=23 )
     {
      Wire.beginTransmission(ADDR_01); // transmit to device 0x46, PT2258
      Wire.write(channell_address01[chno] | (HEX2BCD(channelVolume)   &  0x0f));   
@@ -161,7 +165,7 @@ void PT2258::setChannelVolume(unsigned char chvol, char chno)
   Wire.endTransmission();       // stop transmitting
   }
 
-  else if (chno >=6 && chno <12 )
+  if (chno >=6 && chno <12 )
   {  
   Wire.beginTransmission(ADDR_11); // transmit to device 0x46, PT2258
   Wire.write(channell_address01[chno] | (HEX2BCD(chvol)   &  0x0f));   
@@ -169,7 +173,7 @@ void PT2258::setChannelVolume(unsigned char chvol, char chno)
   Wire.endTransmission();       // stop transmitting
   }
   
-  else if (chno >= 12 && chno <18 )
+  if (chno >= 12 && chno <18 )
   {
   Wire.beginTransmission(ADDR_10); // transmit to device 0x40, PT2258
   Wire.write(channell_address01[chno] | (HEX2BCD(chvol)   &  0x0f));   
@@ -177,7 +181,7 @@ void PT2258::setChannelVolume(unsigned char chvol, char chno)
   Wire.endTransmission();       // stop transmitting
   }
 
-  else if (chno >=18 && chno <24 )
+  if (chno >=18 && chno <24 )
   {  
   Wire.beginTransmission(ADDR_01); // transmit to device 0x46, PT2258
   Wire.write(channell_address01[chno] | (HEX2BCD(chvol)   &  0x0f));   
